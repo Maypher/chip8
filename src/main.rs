@@ -31,7 +31,7 @@ fn main() {
     event_loop.run(move |event, _, control_flow| {
         control_flow.set_wait();
 
-        chip8.cyle();
+        chip8.cycle();
 
         match event {
             Event::WindowEvent {

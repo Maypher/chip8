@@ -19,7 +19,7 @@ fn vs_main(@location(0) vpos: vec2<f32>, @location(1) ipos: vec2<f32>, @location
   let world_y = vpos.y + ipos.y;
 
   let x = world_x / world_width * 2.0 - 1.0;
-  let y = world_y / world_height * 2.0 - 1.0;
+  let y = -(world_y / world_height * 2.0 - 1.0);
 
   output.pos = vec4<f32>(x, y, 0.0, 1.0);
   output.on = on;

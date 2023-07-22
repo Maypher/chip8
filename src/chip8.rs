@@ -1,4 +1,4 @@
-use crate::display::{self, Display};
+use crate::display;
 use rand;
 
 #[derive(PartialEq, Eq, Debug)]
@@ -257,10 +257,9 @@ impl Chip8 {
         }
     }
 
-    pub fn cyle(&mut self) {
+    pub fn cycle(&mut self) {
         let instruction = self.fetch_instruction();
         self.excecute_instruction(instruction);
-        // self.display.render();
     }
 }
 

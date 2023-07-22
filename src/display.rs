@@ -4,13 +4,13 @@ use bytemuck::{Pod, Zeroable};
 
 const PIXEL_VERTICES: [f32; 12] = [
   // first triangle: top left -> bottom left -> top right
+  0.0, -1.0,
   0.0, 1.0,
-  0.0, 0.0,
-  1.0, 1.0,
+  1.0, -1.0,
   // second triangle: bottom left -> bottom right -> top right
-  0.0, 0.0,
-  1.0, 0.0,
-  1.0, 1.0
+  0.0, 1.0,
+  1.0, 1.0,
+  1.0, -1.0
 ];
 
 
@@ -253,7 +253,6 @@ impl Display {
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
             render_pass.draw(0..6, 0..(Display::WIDTH as u32 * Display::HEIGHT as u32));
-
         }
 
         self.queue.submit(Some(command_encoder.finish()));
