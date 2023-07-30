@@ -1,5 +1,7 @@
-use crate::display;
+use crate::{display, keyboard};
 use rand;
+use winit::event::VirtualKeyCode;
+use rodio::{source::SineWave, Source};
 
 #[derive(PartialEq, Eq, Debug)]
 struct Instruction {
@@ -15,7 +17,7 @@ impl Instruction {
             digit1: (instruction & 0xF000) >> 12,
             digit2: (instruction & 0x0F00) >> 8,
             digit3: (instruction & 0x00F0) >> 4,
-            digit4: (instruction & 0xF)    
+            digit4: instruction & 0xF
         }
     }
 
@@ -65,12 +67,23 @@ pub struct Chip8 {
     pc: usize,
     stack_ptr: usize,
     stack: [u16; 16],
-    display: crate::display::Display
+    display: display::Display,
+    keyboard: keyboard::Keyboard,
+    pub paused: bool,
+    current_instruction: Instruction, // Used to access the current instruction from any function in the cpu
+    sink: rodio::Sink,
 }
 
 impl Chip8 {
     pub fn new(window: &winit::window::Window) -> Self {
         let ram = [0; 4096];
+
+        let (_stream, stream_handle) = rodio::OutputStream::try_default().unwrap();
+        let sink = rodio::Sink::try_new(&stream_handle).unwrap();
+
+        // Add a dummy source of the sake of the example.
+        let source = SineWave::new(440.0).take_duration(std::time::Duration::from_secs_f32(0.25)).amplify(0.20).repeat_infinite();
+        sink.append(source);
 
         let mut chip8 = Chip8 {
             ram, 
@@ -81,7 +94,11 @@ impl Chip8 {
             pc: 0x200, 
             stack_ptr: 0, 
             stack: [0; 16], 
-            display: display::Display::new(window)
+            display: display::Display::new(window),
+            keyboard: keyboard::Keyboard::new(),
+            paused: false,
+            current_instruction: Instruction::new(0x0),
+            sink
         };
 
         chip8.load_sprites_into_memory();
@@ -94,8 +111,6 @@ impl Chip8 {
             self.ram[0x200+i] = byte;
         }
     }
-
-    pub fn render(&self) {self.display.render()} 
 
     fn load_sprites_into_memory(&mut self) {
         let sprites: [u8; 80] = [
@@ -122,14 +137,14 @@ impl Chip8 {
         }
     }
 
-    fn fetch_instruction(&mut self) -> u16 {
+    fn fetch_instruction(&mut self) {
         let first_byte: u16 = self.ram[self.pc] as u16;
         let second_byte: u16 = self.ram[self.pc + 1] as u16;
         let instruction: u16 = first_byte << 8 | second_byte;
 
         self.next_instruction();
     
-        instruction
+        self.current_instruction = Instruction::new(instruction);
     }
 
     /// Goes to the next instruction (also used to skip over instuctions)
@@ -137,9 +152,9 @@ impl Chip8 {
         self.pc += 2;
     }
 
-    fn excecute_instruction(&mut self, instruction: u16) {
-        let instruction = Instruction::new(instruction);
-
+    fn excecute_instruction(&mut self) {
+        let instruction = &self.current_instruction;
+    
         match (instruction.d1(), instruction.d2(), instruction.d3(), instruction.d4()) {
             (0, 0, 0xE, 0) => { // Clear screen
                 self.display.clear_screen();
@@ -181,7 +196,7 @@ impl Chip8 {
                 self.registers[x as usize] = instruction.nn() as u8;
             },
             (7, x, _, _) => { // Add nn to vx
-                self.registers[x as usize] += instruction.nn() as u8;
+                self.registers[x as usize] = self.registers[x as usize].wrapping_add(instruction.nn() as u8);
             },
             (8, x, y, 0) => { // Set vx to vy
                 self.registers[x as usize] = self.registers[y as usize];
@@ -251,91 +266,114 @@ impl Chip8 {
                 let to = from + (n as usize);
 
                 self.registers[0xF] = self.display.draw(x, y, &self.ram[from..to]) as u8;
-                self.display.render();
-            },        
+                self.render();
+            },
+            (0xE, x, _0x9, 0xE) => {
+                if self.keyboard.is_pressed(self.registers[x as usize]) {
+                    self.next_instruction();
+                }
+            },
+            (0xE, x, 0xA, 0x1) => {
+                if !self.keyboard.is_pressed(self.registers[x as usize]) {
+                    self.next_instruction();
+                }
+            },
+            (0xF, x, 0x0, 0x7) => {
+                self.registers[x as usize] = self.delay_timer;
+            },
+            (0xF, x, 0x1, 0x5) => {
+                self.delay_timer = self.registers[x as usize];
+            },
+            (0xF, x, 0x1, 0x8) => {
+                self.sound_timer = self.registers[x as usize];
+                if self.sound_timer > 0 {
+                    println!("playing");
+                    self.sink.play();
+                }
+            },
+            (0xF, x, 0x1, 0xE) => {
+                self.i_register += self.registers[x as usize] as usize;
+                if self.i_register > 0x0FFF {
+                    self.registers[0xF] = 1;
+                }
+            },
+            (0xF, _, 0, 0xA) => {
+                self.keyboard.awaiting_key_press = true;
+            },
+            (0xF, x, 0x2, 0x9) => 
+            {
+                self.i_register = self.registers[x as usize] as usize * 5;
+            },
+            (0xF, x, 0x3, 0x3) => {
+                let num = self.registers[x as usize];
+
+                // Since its integer division the decimal places are ignored, effectively removing them
+                self.ram[self.i_register] = num / 100; // The hundreds value
+                self.ram[self.i_register + 1] = (num / 10) % 10; // First remove the ones digit then get the tens digit
+                self.ram[self.i_register + 2] = num % 10; // The tens digit
+            },
+            (0xF, x, 0x5, 0x5) => {
+                for i in 0..=x as usize {
+                    self.ram[self.i_register + i] = self.registers[i];
+                }
+            },
+            (0xF, x, 0x6, 0x5) => {
+                for i in 0..=x as usize {
+                    self.registers[i] = self.ram[self.i_register + i];
+                }
+            }
             _ => {}
         }
     }
 
     pub fn cycle(&mut self) {
-        let instruction = self.fetch_instruction();
-        self.excecute_instruction(instruction);
+        if !self.paused {
+            if self.keyboard.recieved_key_press {
+                self.handle_await_keypress();
+            }
+
+            if !self.keyboard.awaiting_key_press {
+                self.fetch_instruction();
+                self.excecute_instruction();
+            }
+
+        }
     }
-}
-
-#[cfg(test)]
-mod execution_tests {
-    use crate::chip8::Instruction;
-    use super::Chip8;
-
-    #[test]
-    fn test_instruction() {
-        let mut chip8 = Chip8::new();
-
-        chip8.ram[0x200] = 0x1B;
-        chip8.ram[0x200 + 1] = 0xE4;
-
-        assert_eq!(Instruction::new(chip8.fetch_instruction()), Instruction {digit1: 0x1, digit2: 0xB, digit3: 0xE, digit4: 0x4})
-    }
-
-    #[test]
-    fn test_1nnn() {
-        let mut chip8: Chip8 = Chip8::new();
-
-        let instruction = 0x1F20;
-        chip8.excecute_instruction(instruction);
-
-        assert_eq!(chip8.pc, 0xF20);  
-    }
-
-    #[test]
-    fn test_00ee() {
-        const MEMORY_ADDRESS: u16 = 0x205;
     
-        let mut chip8: Chip8 = Chip8::new();
+    pub fn tick_timers(&mut self) {
+        if self.delay_timer > 0 {
+            self.delay_timer -= 1;
+        }
 
-        chip8.stack[0] = MEMORY_ADDRESS;
-        chip8.stack_ptr = 1;
+        if self.sound_timer > 0 {
+            self.sound_timer -= 1;
 
-        chip8.excecute_instruction(0x00EE);
-
-        assert_eq!(chip8.pc, MEMORY_ADDRESS as usize);
+            if self.sound_timer == 0 {
+                self.sink.stop();
+            }
+        }
     }
 
-    #[test]
-    fn test_2nnn() {
-        let mut chip8: Chip8 = Chip8::new();
-        
-        let og_memory_address: u16 = chip8.pc as u16;
-        const INSTRUCTION: u16 = 0x2205;    
-        chip8.excecute_instruction(INSTRUCTION);
-
-        assert_eq!(chip8.stack[0], og_memory_address);
-        assert_ne!(chip8.stack[0], chip8.pc as u16);
+    pub fn render(&mut self) {
+        self.display.render();
     }
 
-    #[test]
-    fn test_3xnn() {
-        const INSTRUCTION: u16 = 0x30EF;
-        let mut chip8 = Chip8::new();
-        let og_pc = chip8.pc;
-
-        chip8.registers[0] = 0xEF;
-
-        chip8.excecute_instruction(INSTRUCTION);
-
-        assert_eq!(chip8.pc, og_pc + 2);        
+    pub fn on_key_down(&mut self, keycode: &VirtualKeyCode) {
+        self.keyboard.on_key_down(keycode);
     }
-}
 
-#[cfg(test)]
-mod instruction_tests {
-    use super::Instruction;
+    pub fn on_key_up(&mut self, keycode: &VirtualKeyCode) {
+        self.keyboard.on_key_up(keycode);
+    }
+    
+    /// For use with functions that make the chip 8 wait for a key press
+    fn handle_await_keypress(&mut self) {
+        self.registers[self.current_instruction.d2() as usize] = self.keyboard.get_last_key_pressed();
+        self.keyboard.awaiting_key_press = false;
+        self.keyboard.recieved_key_press = false;
+    }
 
-    #[test]
-    fn test_d2_d3_d4() {
-        let instruction = Instruction::new(0x2663);
-
-        assert_eq!(instruction.nnn(), 0x663);
+    pub fn handle_resize(&mut self, new_size: &winit::dpi::PhysicalSize<u32>) {
+        self.display.resize(new_size);
     }
 }

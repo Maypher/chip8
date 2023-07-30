@@ -4,13 +4,13 @@ use bytemuck::{Pod, Zeroable};
 
 const PIXEL_VERTICES: [f32; 12] = [
   // first triangle: top left -> bottom left -> top right
-  0.0, -1.0,
   0.0, 1.0,
-  1.0, -1.0,
-  // second triangle: bottom left -> bottom right -> top right
-  0.0, 1.0,
+  0.0, 0.0,
   1.0, 1.0,
-  1.0, -1.0
+  // second triangle: bottom left -> bottom right -> top right
+  0.0, 0.0,
+  1.0, 0.0,
+  1.0, 1.0
 ];
 
 
@@ -45,10 +45,10 @@ impl Instance {
 }
 
 pub struct Display {
-    pixels: [[bool; Display::WIDTH]; Display::HEIGHT], // Each row (Display::HEIGHT) will have Display::WIDTH columns in it
+    pixels: [[bool; Display::WIDTH]; Display::HEIGHT], // Each column (Display::HEIGHT) will have Display::WIDTH rows in it
     pub scale: u8,
     surface: wgpu::Surface,
-    //surface_config: wgpu::SurfaceConfiguration,
+    surface_config: wgpu::SurfaceConfiguration,
     device: wgpu::Device,
     queue: wgpu::Queue,
     pipeline: wgpu::RenderPipeline,
@@ -134,7 +134,7 @@ impl Display {
             primitive: wgpu::PrimitiveState { 
                 topology: wgpu::PrimitiveTopology::TriangleList, 
                 strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw, 
+                front_face: wgpu::FrontFace::Cw, 
                 cull_mode: Some(wgpu::Face::Back), 
                 unclipped_depth: false, 
                 polygon_mode: wgpu::PolygonMode::Fill,
@@ -158,7 +158,7 @@ impl Display {
             pixels: [[false; Display::WIDTH]; Display::HEIGHT],
             scale: 1,
             surface,
-           // surface_config,
+            surface_config,
             device,
             queue,
             pipeline,
@@ -169,14 +169,6 @@ impl Display {
 
     pub fn clear_screen(&mut self) {
         self.pixels = [[false; Display::WIDTH]; Display::HEIGHT]
-    }
-
-    pub fn get_pixel(&self, x: usize, y: usize) -> bool {
-        self.pixels[y][x]
-    }
-
-    pub fn set_pixel(&mut self, x: usize, y: usize, on: bool) {
-        self.pixels[y][x] = on;
     }
 
     pub fn draw(&mut self, starting_x: u8, starting_y: u8, memory: &[u8]) -> bool {
@@ -200,14 +192,14 @@ impl Display {
         pixel_turned_off
     }
 
-    // pub fn resize(&mut self, new_size: &winit::dpi::PhysicalSize<u32>) {
-    //     if new_size.width > 0 && new_size.height > 0 {
-    //         self.surface_config.width = new_size.width;
-    //         self.surface_config.height = new_size.height;
+    pub fn resize(&mut self, new_size: &winit::dpi::PhysicalSize<u32>) {
+        if new_size.width > 0 && new_size.height > 0 {
+            self.surface_config.width = new_size.width;
+            self.surface_config.height = new_size.height;
 
-    //         self.surface.configure(&self.device, &self.surface_config);
-    //     }
-    // }
+            self.surface.configure(&self.device, &self.surface_config);
+        }
+    }
 
     fn gen_instances(&self) -> [Instance; Display::WIDTH * Display::HEIGHT] {
         let mut instances = [Instance {pos: [0.0, 0.0], on: 0.0}; Display::WIDTH * Display::HEIGHT];

@@ -1,7 +1,8 @@
 mod chip8;
 mod display;
+mod keyboard;
 use winit::{
-    event::{Event, WindowEvent}
+    event::{Event, WindowEvent, KeyboardInput, VirtualKeyCode}
 };
 
 use std::time;
@@ -18,7 +19,6 @@ fn main() {
     let window = winit::window::WindowBuilder::new()
     .with_title("Chip 8")
     .with_inner_size(winit::dpi::Size::Physical(winit::dpi::PhysicalSize::new(1080, 540)))
-    .with_resizable(false)
     .build(&event_loop)
     .unwrap();
 
@@ -26,24 +26,63 @@ fn main() {
 
     chip8.load_program(rom_data);
 
-    let start_time = time::Instant::now();
+    let instructions_per_frame: u64 = 60;
     
+    let sound_interval = std::time::Instant::now();
+
     event_loop.run(move |event, _, control_flow| {
-        control_flow.set_wait();
+        chip8.tick_timers();
 
-        chip8.cycle();
-
+        control_flow.set_wait_timeout(std::time::Duration::from_millis(1000 / instructions_per_frame));
+        
         match event {
             Event::WindowEvent {
                 event,
-                window_id,
-            } if window_id == window.id() => {
-                match  event {
+                ..
+            } => {
+                match event {
                     WindowEvent::CloseRequested => {control_flow.set_exit();},
+                    WindowEvent::KeyboardInput { 
+                        input: KeyboardInput {
+                            virtual_keycode: Some(VirtualKeyCode::P),
+                            ..
+                        },
+                        .. 
+                    } => {
+                        chip8.paused = !chip8.paused;
+                    },
+                    WindowEvent::KeyboardInput { 
+                        input,
+                        ..
+                    } => {
+                        if input.virtual_keycode.is_some() {
+                            match input.state {
+                                winit::event::ElementState::Pressed => {
+                                    chip8.on_key_down(&input.virtual_keycode.unwrap());
+                                },
+                                winit::event::ElementState::Released => {
+                                    chip8.on_key_up(&input.virtual_keycode.unwrap());
+                                }
+                            }
+                        }
+                    },
+                    WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
+                        chip8.handle_resize(new_inner_size);
+                        chip8.render();
+                    },
+                    WindowEvent::Resized(new_inner_size) => {
+                        chip8.handle_resize(&new_inner_size);
+                        chip8.render();
+                    }
                     _ => {}
                 }
+
             },
-            Event::RedrawRequested(..) => {chip8.render();},
+            Event::MainEventsCleared => {
+                for _ in 0..instructions_per_frame {
+                    chip8.cycle();
+                }
+            },
             _ => (),
         }
     });

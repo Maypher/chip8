@@ -7,8 +7,9 @@ edition = "2021"
 
 [dependencies]
 rand = "0.8.5"
-wgpu = "0.16.2"
+wgpu = "0.17.0"
 winit = "0.28.6"
 pollster = "0.3.0"
 bytemuck = {version ="1.13.1", features = ["derive"]}
 rfd = "0.11.4"
+rodio = "0.17.1"

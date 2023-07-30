@@ -3,9 +3,6 @@ struct VertexOutput {
   @location(0) @interpolate(flat) on: f32,
 };
 
-@group(0) @binding(0)
-var<uniform> ortho_matrix: mat4x4<f32>;
-
 @vertex
 fn vs_main(@location(0) vpos: vec2<f32>, @location(1) ipos: vec2<f32>, @location(2) on: f32) -> VertexOutput {
   // vpos is the vertex position, ipos is the instance position, on is whether or not this tile is illuminated
