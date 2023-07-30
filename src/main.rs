@@ -31,7 +31,9 @@ fn main() {
     let sound_interval = std::time::Instant::now();
 
     event_loop.run(move |event, _, control_flow| {
-        chip8.tick_timers();
+        if sound_interval.elapsed() >= std::time::Duration::from_secs_f32(0.016) {
+            chip8.tick_timers();
+        }
 
         control_flow.set_wait_timeout(std::time::Duration::from_millis(1000 / instructions_per_frame));
         
