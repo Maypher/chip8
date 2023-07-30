@@ -46,7 +46,7 @@ impl Instance {
 
 pub struct Display {
     pixels: [[bool; Display::WIDTH]; Display::HEIGHT], // Each column (Display::HEIGHT) will have Display::WIDTH rows in it
-    pub scale: u8,
+    dirty: bool,
     surface: wgpu::Surface,
     surface_config: wgpu::SurfaceConfiguration,
     device: wgpu::Device,
@@ -156,7 +156,7 @@ impl Display {
 
         Display { 
             pixels: [[false; Display::WIDTH]; Display::HEIGHT],
-            scale: 1,
+            dirty: false,
             surface,
             surface_config,
             device,
@@ -167,8 +167,18 @@ impl Display {
         }
     }
 
+    /// Dirties the display and schedules it for redraw
+    pub fn dirty(&mut self) {
+        self.dirty = true;
+    }
+
+    pub fn is_dirty(&self) -> bool {
+        self.dirty
+    }
+
     pub fn clear_screen(&mut self) {
-        self.pixels = [[false; Display::WIDTH]; Display::HEIGHT]
+        self.pixels = [[false; Display::WIDTH]; Display::HEIGHT];
+        self.dirty();
     }
 
     pub fn draw(&mut self, starting_x: u8, starting_y: u8, memory: &[u8]) -> bool {
@@ -189,6 +199,8 @@ impl Display {
                 pixel_turned_off = current_pixel == 1 && new_pixel == 0;
             }
         }
+
+        self.dirty();
         pixel_turned_off
     }
 
@@ -198,6 +210,8 @@ impl Display {
             self.surface_config.height = new_size.height;
 
             self.surface.configure(&self.device, &self.surface_config);
+
+            self.dirty();
         }
     }
 
@@ -217,7 +231,7 @@ impl Display {
         instances
     }
 
-    pub fn render(&self) {
+    pub fn render(&mut self) {
         let frame = self.surface.get_current_texture().unwrap();
         let frame_view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
 
@@ -245,6 +259,8 @@ impl Display {
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
             render_pass.draw(0..6, 0..(Display::WIDTH as u32 * Display::HEIGHT as u32));
+
+            self.dirty = false;
         }
 
         self.queue.submit(Some(command_encoder.finish()));

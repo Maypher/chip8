@@ -266,7 +266,6 @@ impl Chip8 {
                 let to = from + (n as usize);
 
                 self.registers[0xF] = self.display.draw(x, y, &self.ram[from..to]) as u8;
-                self.render();
             },
             (0xE, x, _0x9, 0xE) => {
                 if self.keyboard.is_pressed(self.registers[x as usize]) {
@@ -337,6 +336,9 @@ impl Chip8 {
                 self.excecute_instruction();
             }
 
+            if self.display.is_dirty() {
+                self.display.render();
+            }
         }
     }
     
@@ -352,10 +354,6 @@ impl Chip8 {
                 self.sink.stop();
             }
         }
-    }
-
-    pub fn render(&mut self) {
-        self.display.render();
     }
 
     pub fn on_key_down(&mut self, keycode: &VirtualKeyCode) {

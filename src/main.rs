@@ -70,11 +70,9 @@ fn main() {
                     },
                     WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
                         chip8.handle_resize(new_inner_size);
-                        chip8.render();
                     },
                     WindowEvent::Resized(new_inner_size) => {
                         chip8.handle_resize(&new_inner_size);
-                        chip8.render();
                     }
                     _ => {}
                 }
