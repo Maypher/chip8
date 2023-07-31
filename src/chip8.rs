@@ -41,6 +41,7 @@ impl Instruction {
         self.digit4
     }
     
+    #[allow(dead_code)]
     /// Returns the first and second bytes of the instruction (ltr)
     pub fn xy(&self) -> u16 {
         self.d1() << 4 | self.d2()
@@ -71,19 +72,23 @@ pub struct Chip8 {
     keyboard: keyboard::Keyboard,
     pub paused: bool,
     current_instruction: Instruction, // Used to access the current instruction from any function in the cpu
-    sink: rodio::Sink,
+    beep: rodio::Sink,
+    #[allow(dead_code)] // rodio::Sink requires the output stream to live as long as it
+    stream: rodio::OutputStream
 }
 
 impl Chip8 {
     pub fn new(window: &winit::window::Window) -> Self {
         let ram = [0; 4096];
 
-        let (_stream, stream_handle) = rodio::OutputStream::try_default().unwrap();
-        let sink = rodio::Sink::try_new(&stream_handle).unwrap();
+        let (stream, stream_handle) = rodio::OutputStream::try_default().unwrap();
 
         // Add a dummy source of the sake of the example.
-        let source = SineWave::new(440.0).take_duration(std::time::Duration::from_secs_f32(0.25)).amplify(0.20).repeat_infinite();
-        sink.append(source);
+        let source = SineWave::new(440.0).amplify(0.20).repeat_infinite();
+
+        let beep = rodio::Sink::try_new(&stream_handle).unwrap();
+        beep.append(source);
+        beep.pause();
 
         let mut chip8 = Chip8 {
             ram, 
@@ -98,7 +103,8 @@ impl Chip8 {
             keyboard: keyboard::Keyboard::new(),
             paused: false,
             current_instruction: Instruction::new(0x0),
-            sink
+            beep,
+            stream
         };
 
         chip8.load_sprites_into_memory();
@@ -286,8 +292,7 @@ impl Chip8 {
             (0xF, x, 0x1, 0x8) => {
                 self.sound_timer = self.registers[x as usize];
                 if self.sound_timer > 0 {
-                    println!("playing");
-                    self.sink.play();
+                    self.beep.play();
                 }
             },
             (0xF, x, 0x1, 0xE) => {
@@ -351,7 +356,7 @@ impl Chip8 {
             self.sound_timer -= 1;
 
             if self.sound_timer == 0 {
-                self.sink.stop();
+                self.beep.pause();
             }
         }
     }

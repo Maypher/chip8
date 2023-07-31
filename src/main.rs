@@ -1,11 +1,7 @@
 mod chip8;
 mod display;
 mod keyboard;
-use winit::{
-    event::{Event, WindowEvent, KeyboardInput, VirtualKeyCode}
-};
-
-use std::time;
+use winit::event::{Event, WindowEvent, KeyboardInput, VirtualKeyCode};
 
 use rfd::AsyncFileDialog;
 
